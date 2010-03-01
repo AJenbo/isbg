@@ -11,6 +11,7 @@
 # You may use isbg under any OSI approved open source license
 # such as those listed at http://opensource.org/licenses/alphabetical
 
+status = ""
 version="0.99"
 
 from subprocess import Popen, PIPE
@@ -25,6 +26,7 @@ import string
 import socket
 import time
 import atexit
+import math
 
 try:
   from hashlib import md5
@@ -405,6 +407,13 @@ def assertok(res,*args):
         errorexit("\n%s returned %s - aborting\n" % (`args`, res ), exitcodeimap)
 
 # Main code starts here
+
+# print status
+for c in range(len(status)):
+  os.write(1, "\b")
+status = "Logging in."
+os.write(1, status)
+
 if usessl:
     imap=imaplib.IMAP4_SSL(imaphost, imapport)
 else:
@@ -423,7 +432,20 @@ if learnspambox:
   s_learnt = 0
   typ, uids = imap.uid("SEARCH", None, "ALL")
   uids = uids[0].split()
+
+  # calculate work load and print the first line
+  work = len(uids)
+  progress = 0
+  tasktime = 0
+  for c in range(len(status)):
+    os.write(1, "\b")
+  status = "Spam 0% learned. 0/"+str(work)+"."
+  os.write(1, status)
+
   for u in uids:
+      # start messuring time of this loop
+      starttime = time.time()
+
       body = getmessage(u)
       p=Popen(["spamc", "--learntype=spam"], stdin = PIPE, stdout = PIPE, close_fds = True)
       try:
@@ -439,6 +461,22 @@ if learnspambox:
       if learnthendestroy:
         res = imap.uid("STORE", u, spamflagscmd, "(\\Deleted)")
         assertok(res, "uid store", u, spamflagscmd, "(\\Deleted)")
+
+      # Calculate progress and print it
+      progress = progress+1
+      for c in range(len(status)):
+        os.write(1, "\b")
+      status = "Spam "+str(int(progress/float(work)*100))+"% learned."
+      tasktime = tasktime+(time.time()-starttime)
+      remaningtime = int(tasktime/progress*(len(uids)-progress))
+      status = status+" "+str(progress)+"/"+str(work)+"."
+      status = status+" Time remaining "
+      if(remaningtime > 3599):
+        status = status+str(int(math.floor(remaningtime/3600)))+" h, "
+      if(remaningtime > 59):
+        status = status+str(int(math.floor((remaningtime % 3600)/60)))+" min and "
+      status = status+str(remaningtime % 60)+" sec."
+      os.write(1, status)
   if expunge:
     imap.expunge()
 
@@ -450,12 +488,26 @@ if learnhambox:
   h_learnt = 0
   typ, uids = imap.uid("SEARCH", None, "ALL")
   uids = uids[0].split()
+
+  # calculate work load and print the first line
+  work = len(uids)
+  progress = 0
+  tasktime = 0
+  for c in range(len(status)):
+    os.write(1, "\b")
+  status = "Ham 0% learned. 0/"+str(work)+"."
+  os.write(1, status)
+
   for u in uids:
+      # start messuring time of this loop
+      starttime = time.time()
+
       body = getmessage(u)
       p=Popen(["spamc", "--learntype=ham"], stdin = PIPE, stdout = PIPE, close_fds = True)
       try:
         out = p.communicate(body)[0]
       except:
+        #todo should we still move this?
         continue
       code = p.returncode
       if code == 69 or code == 74:
@@ -469,12 +521,35 @@ if learnhambox:
       if learnthendestroy or movehamto:
         res = imap.uid("STORE", u, spamflagscmd, "(\\Deleted)")
         assertok(res, "uid store", u, spamflagscmd, "(\\Deleted)")
+
+      # Calculate progress and print it
+      progress = progress+1
+      for c in range(len(status)):
+        os.write(1, "\b")
+      status = "Ham "+str(int(progress/float(work)*100))+"% learned."
+      status = status+" "+str(progress)+"/"+str(work)+"."
+      tasktime = tasktime+(time.time()-starttime)
+      remaningtime = int(tasktime/progress*(len(uids)-progress))
+      status = status+" Time remaining "
+      if(remaningtime > 3599):
+        status = status+str(int(math.floor(remaningtime/3600)))+" h, "
+      if(remaningtime > 59):
+        status = status+str(int(math.floor((remaningtime % 3600)/60)))+" min and "
+      status = status+str(remaningtime % 60)+" sec."
+      os.write(1, status)
   if expunge or movehamto:
     imap.expunge()
 
 uids=[]
+progress = 0
 
 if not teachonly:
+  # print status
+  for c in range(len(status)):
+    os.write(1, "\b")
+  status = "Load inbox."
+  os.write(1, status)
+
   # check spaminbox exists by examining it
   res=imap.select(spaminbox, 1)
   assertok(res, 'select', spaminbox, 1)
@@ -482,6 +557,12 @@ if not teachonly:
   # select inbox
   res=imap.select(imapinbox, 1)
   assertok(res, 'select', imapinbox, 1)
+
+  # print status
+  for c in range(len(status)):
+    os.write(1, "\b")
+  status = "Getting uids"
+  os.write(1, status)
 
   # get the uids of all mails with a size less then the thresholdsize
   typ, inboxuids = imap.uid("SEARCH", None, "SMALLER", thresholdsize)
@@ -503,6 +584,15 @@ if not teachonly:
   # filter away uids that was previously scanned
   uids = [u for u in inboxuids if u not in pastuids]
 
+  # calculate work load and print the first line
+  work = len(uids)
+  progress = 0
+  tasktime = 0
+  for c in range(len(status)):
+    os.write(1, "\b")
+  status = "Inbox 0% scanned. 0/"+str(work)+"."
+  os.write(1, status)
+
 # Keep track of new spam uids
 spamlist=[]
 
@@ -511,6 +601,9 @@ spamdeletelist=[]
 
 # Main loop that iterates over each new uid we haven't seen before
 for u in uids:
+    # start messuring time of this loop
+    starttime = time.time()
+
     # Retrieve the entire message
     body = getmessage(u, pastuids)
 
@@ -564,6 +657,21 @@ for u in uids:
 
         spamlist.append(u)
 
+    # Calculate progress and print it
+    progress = progress+1
+    for c in range(len(status)):
+      os.write(1, "\b")
+    status = "Inbox "+str(int(progress/float(work)*100))+"% scanned."
+    tasktime = tasktime+(time.time()-starttime)
+    remaningtime = int(tasktime/progress*(work-progress))
+    status = status+" "+str(progress)+"/"+str(work)+"."
+    status = status+" Time remaining "
+    if(remaningtime > 3599):
+      status = status+str(int(math.floor(remaningtime/3600)))+" h, "
+    if(remaningtime > 59):
+      status = status+str(int(math.floor((remaningtime % 3600)/60)))+" min and "
+    status = status+str(remaningtime % 60)+" sec."
+    os.write(1, status)
 
 nummsg=len(uids)
 spamdeleted=len(spamdeletelist)
@@ -606,6 +714,11 @@ if not teachonly:
 imap.logout()
 del imap
 
+# clear status
+for c in range(len(status)):
+  os.write(1, "\b")
+status = ""
+progress = 0
 
 if stats:
   if learnspambox:
